@@ -9,6 +9,8 @@ It's a new application, so there isn't much here yet.
 
 `discovery/discover_into_syscat.py` explores a device via [netdescribe](https://github.com/equill/netdescribe/), and ensures there's an entry in Syscat corresponding to what it just found.
 
+If an entry exists for that device, its details will be updated to match what was discovered.
+
 ## Usage
 
 ```
