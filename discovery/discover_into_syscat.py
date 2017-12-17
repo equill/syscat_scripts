@@ -32,14 +32,15 @@ import json
 import sys
 
 
-def discover_into_syscat_v1(address,    # IP address, FQDN or otherwise resolvable target address
-                            name=None,  # Name of target device
+def discover_into_syscat_v1(address,        # IP address, FQDN or otherwise resolvable address
+                            name=None,      # Name of target device, to override the discovered one
                             snmpcommunity="public",
-                            syscat_url="http://localhost:4950", # Base URL for syscat
-                            loglevel="info"
+                            syscat_url="http://localhost:4950", # Default base URL for syscat
+                            loglevel="info" # Default loglevel
                            ):
     """
-    Ensure that there's an entry in Syscat corresponding to the device we just discovered.
+    Ensure that there's an entry in Syscat for the device we just discovered.
+    Does not update existing instances.
     Assumes version 1 of the Syscat API.
     """
     # Create the logger
@@ -56,19 +57,25 @@ def discover_into_syscat_v1(address,    # IP address, FQDN or otherwise resolvab
     logger.debug("Result of discovery was:\n%s", json.dumps(device, indent=4))
     # Is it already there?
     response = requests.get("%s/raw/v1/devices/%s" % (syscat_url, uid))
+    # No existing entry; create one
     if response.status_code == 404:
         creation_url = "%s/raw/v1/devices" % syscat_url
         logger.debug("%s is not present in Syscat; creating it at URL %s.", uid, creation_url)
+        # Create the device entry itself
         c_response = requests.post(creation_url,
                                    data={'uid': uid,
                                          'sysName': device['sysinfo']['sysName'],
                                          'sysDescr': device['sysinfo']['sysDescr']})
+        # Success!
         if c_response.status_code == 201:
             logger.info("Successfully created device %s", uid)
+        # Not success!
         else:
             logger.error("Device not created: %s %s", c_response.status_code, c_response.text)
+    # We already have one of these; log the fact and do nothing
     elif response.status_code == 200:
         logger.debug("%s is already present in Syscat", uid)
+    # Something else happened.
     else:
         logger.critical("Syscat returned an unexpected result: %s %s",
                         response.status_code, response.text)
