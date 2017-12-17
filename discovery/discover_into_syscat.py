@@ -19,18 +19,67 @@ Update Syscat with the results of discovering a device.
 """
 
 # Third-party libraries
-import netdescribe
-import requests
-
-# From this package
 import netdescribe.snmp.device_discovery
 from netdescribe.utils import create_logger
+import requests
 
 # Included batteries
 import argparse
 import json
+import re
 import sys
 
+
+def sanitise_uid(uid):
+    "Sanitise a UID string in the same way Restagraph does"
+    return re.sub('[/ ]', '_', uid)
+
+def populate_interfaces_flat_v1(uid, network, syscat_url, logger):
+    '''
+    Add interface details to a device.
+    Just attach each interface directly to the device, without making any attempt
+    to distinguish between subinterfaces and parents.
+    Assumes v1 of the Syscat API.
+    Arguments:
+    - uid: the name by which we're calling this thing in Syscat
+    - network: the contents of the 'network' sub-tree returned by Netdescribe
+    - syscat_url: the base URL for the Syscat server
+    - logger: a logging object
+    '''
+    for index, details in network['interfaces'].items():
+        uri = '%s/raw/v1' % syscat_url
+        ifurl = '%s/devices/%s/Interfaces/networkInterfaces' % (uri, uid)
+        logger.debug('Attempting to add network interface %s to device %s at URL %s',
+                     details['ifName'], uid, ifurl)
+        netresponse = requests.post(
+            ifurl,
+            data={'uid': details['ifName'],
+                  'snmpindex': index,
+                  'ifname': details['ifName'],
+                  'ifdescr': details['ifDescr'],
+                  'ifalias': details['ifAlias'],
+                  'iftype': details['ifType'],
+                  'ifspeed': details['ifSpeed'],
+                  'ifhighspeed': details['ifHighSpeed'],
+                  'ifphysaddress': details['ifPhysAddress']})
+        logger.debug('result of interface creation for %s (%s): %s - %s',
+                     index, details['ifName'], netresponse.status_code, netresponse.text)
+        # Add IPv4 addresses
+        if str(index) in network['ifIfaceAddrMap']: # Not all interfaces have addresses
+            for addr in network['ifIfaceAddrMap'][str(index)]:
+                ipurl = '%s/devices/%s/Interfaces/networkInterfaces/%s/Addresses/ipv4Addresses' % (
+                    uri, uid, sanitise_uid(details['ifName']))
+                logger.debug('Attempting to create IPv4 Address %s under URL %s',
+                             addr['address'], ipurl)
+                addresponse = requests.post(ipurl,
+                                            data={'uid': addr['address'],
+                                                  'netmask': addr['netmask']})
+                if addresponse.status_code != 201:
+                    logger.error('Failed to add address to interface: %s %s',
+                                 addresponse.status_code, addresponse.text)
+        else:
+            logger.debug('No addresses found for interface with index number %s; moving on.',
+                         str(index))
 
 def discover_into_syscat_v1(address,        # IP address, FQDN or otherwise resolvable address
                             name=None,      # Name of target device, to override the discovered one
@@ -69,6 +118,8 @@ def discover_into_syscat_v1(address,        # IP address, FQDN or otherwise reso
         # Success!
         if c_response.status_code == 201:
             logger.info("Successfully created device %s", uid)
+            # Now follow up by populating the interfaces
+            populate_interfaces_flat_v1(uid, device['network'], syscat_url, logger)
         # Not success!
         else:
             logger.error("Device not created: %s %s", c_response.status_code, c_response.text)
