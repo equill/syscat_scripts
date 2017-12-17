@@ -12,8 +12,12 @@ It's a new application, so there isn't much here yet.
 ## Usage
 
 ```
-./discover_into_syscat.py <address> [--syscat-url <URL for your Syscat server>] [--name <name for Syscat to use>] \
-    [--community <SNMP community string>] [--debug]
+./discover_into_syscat.py <address> \
+    [--syscat-url <URL for your Syscat server>] \
+    [--name <name for Syscat to use>] \
+    [-- use_sysname <boolean>] \
+    [--community <SNMP community string>] \
+    [--debug]
 ```
 
 - `address` is the only mandatory argument
@@ -21,7 +25,10 @@ It's a new application, so there isn't much here yet.
     - if you don't specify a name via the `--name` parameter, this will be used instead.
 - `--syscat-url` is the base URL for your Syscat server, _without_ a trailing slash.
     - default is `http://localhost:4950`
-- `--name` is the name you want Syscat to call this device
+- `--name` is the name you want Syscat to call this device, instead of `address`
+    - takes precedence over `--use-sysname`
+- `--use-sysname` indicates whether you want to use the SNMP-discovered sysName instead of `address`
+    - is ignored if you also specify `--name`
 - `--community` is the SNMP string accepted by the target device
     - default is `public`.
 

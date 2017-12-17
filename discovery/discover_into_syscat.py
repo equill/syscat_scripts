@@ -83,8 +83,9 @@ def populate_interfaces_flat_v1(uid, network, syscat_url, logger):
 
 def discover_into_syscat_v1(address,        # IP address, FQDN or otherwise resolvable address
                             name=None,      # Name of target device, to override the discovered one
+                            use_sysname=False,  # Use the discovered sysName as the Syscat UID
                             snmpcommunity="public",
-                            syscat_url="http://localhost:4950", # Default base URL for syscat
+                            syscat_url="http://localhost:4950", # Default base URL for Syscat
                             loglevel="info" # Default loglevel
                            ):
     """
@@ -95,15 +96,17 @@ def discover_into_syscat_v1(address,        # IP address, FQDN or otherwise reso
     # Create the logger
     logger = create_logger(loglevel=loglevel)
     logger.info("Performing discovery on device at %s", address)
-    # Resolve the device's UID
-    if name:
-        uid = name
-    else:
-        uid = address
-    logger.debug("Using name '%s' for device", uid)
     # Perform discovery
     device = netdescribe.snmp.device_discovery.explore_device(address, logger, snmpcommunity)
     logger.debug("Result of discovery was:\n%s", json.dumps(device, indent=4))
+    # Resolve the device's UID
+    if name:
+        uid = name
+    elif use_sysname and device['sysinfo']['sysName'] and device['sysinfo']['sysName'] != "":
+        uid = device['sysinfo']['sysName']
+    else:
+        uid = address
+    logger.debug("Using name '%s' for device", uid)
     # Is it already there?
     response = requests.get("%s/raw/v1/devices/%s" % (syscat_url, uid))
     # No existing entry; create one
@@ -152,6 +155,10 @@ def process_cli():
                         action='store',
                         default=None,
                         help='The name (UID) that this device should have in Syscat')
+    parser.add_argument('--use_sysname',
+                        action='store_true',
+                        default=False,
+                        help='Whether to use the SNMP-discovered sysName instead of ´address´.')
     parser.add_argument('--community',
                         type=str,
                         action='store',
@@ -168,6 +175,7 @@ def process_cli():
     # Now discover stuff
     discover_into_syscat_v1(args.address,
                             name=args.name,
+                            use_sysname=args.use_sysname,
                             snmpcommunity=args.community,
                             loglevel=loglevel)
 
