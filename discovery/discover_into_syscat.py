@@ -96,7 +96,7 @@ def add_interface(host_uid, iface_uid, iface, base_url, logger):
     - iface: SyscatIface namedtuple
     - logger
     '''
-    ifurl = '%s/raw/v1/devices/%s/Interfaces/networkInterfaces' % (base_url, host_uid)
+    ifurl = '{}/raw/v1/devices/{}/Interfaces/networkInterfaces'.format(base_url, host_uid)
     details = {'uid': iface_uid,
                'snmpindex': iface.snmpindex,
                'ifname': iface.ifname,
@@ -137,10 +137,10 @@ def add_ip_address(host_uid, iface_uid, addr, base_url, logger):
     """
     # Version-specific wrangling
     if addr.version == 4:
-        ipurl = '{}/devices/{}/Interfaces/networkInterfaces/{}/Addresses/ipv4Addresses'.format(
+        ipurl = '{}/raw/v1/devices/{}/Interfaces/networkInterfaces/{}/Addresses/ipv4Addresses'.format(
             base_url, host_uid, iface_uid)
     elif addr.version == 6:
-        ipurl = '{}/devices/{}/Interfaces/networkInterfaces/{}/Addresses/ipv6Addresses'.format(
+        ipurl = '{}/raw/v1/devices/{}/Interfaces/networkInterfaces/{}/Addresses/ipv6Addresses'.format(
             base_url, host_uid, iface_uid)
     else:
         logger.error('Unknown IP version %s for address %s', addr.version, addr)
@@ -162,7 +162,7 @@ def delete_ip_address(host_uid, iface_uid, addr, base_url, logger):
     """
     logger.debug('Deleting IPv%s address %s from interface %s:%s',
                  addr.version, addr.with_prefixlen, host_uid, iface_uid)
-    url = '{}/devices/{}/Interfaces/networkInterfaces/{}/Addresses/ipv4Addresses/{}'.format(
+    url = '{}/raw/v1/devices/{}/Interfaces/networkInterfaces/{}/Addresses/ipv4Addresses/{}'.format(
         base_url, host_uid, iface_uid, addr.with_prefixlen)
     response = requests.delete(url, data={'delete-dependent': True})
     if response.status_code == 204:
@@ -200,7 +200,7 @@ def compare_discovered_device_to_syscat(discovered, syscat, logger):
 
 def discovered_ifaces_to_syscat_format(network, logger):
     '''
-    Take the 'network' sub-tree of explore_device(), and return a list of (SyscatIface namedtuple,
+    Take the 'network' sub-tree of explore_device(), and return a dict of (SyscatIface namedtuple,
     address dict) tuples, that approximates what we'd get if we extracted the equivalent tree from
     Syscat.
     Makes it much simpler to compare both sets.
@@ -344,7 +344,7 @@ def get_iface_list_from_syscat(host_uid, syscat_url, logger):
     '''
     logger.debug('Retrieving list of interfaces for %s from Syscat.', host_uid)
     # Get the list of interfaces for this device
-    response = requests.get('%s/devices/%s/Interfaces/networkInterfaces' % (syscat_url, host_uid))
+    response = requests.get('{}/raw/v1/devices/{}/Interfaces/networkInterfaces'.format(syscat_url, host_uid))
     # If it has none, bail out now.
     if response.status_code == 404:
         logger.debug('No interfaces found for %s', host_uid)
@@ -571,8 +571,7 @@ def populate_interfaces_flat_v1(host_uid, network, syscat_url, logger, newdevice
     # Convert the discovered data into a Syscat-friendly layout
     discovered = discovered_ifaces_to_syscat_format(network, logger)
     # Set common variables ahead of time
-    uri = '%s/raw/v1' % syscat_url
-    ifurl = '%s/devices/%s/Interfaces/networkInterfaces' % (uri, host_uid)
+    ifurl = '{}/raw/v1/devices/{}/Interfaces/networkInterfaces'.format(syscat_url, host_uid)
     # New device: just go ahead and add the details
     if newdevice:
         for iface_uid, ifacetuple in discovered.items():
@@ -580,17 +579,17 @@ def populate_interfaces_flat_v1(host_uid, network, syscat_url, logger, newdevice
             # Add IPv4 addresses
             if ifacetuple[1] and 'ipv4Addresses' in ifacetuple[1]:
                 for addr in ifacetuple[1]['ipv4Addresses']:
-                    add_ip_address(host_uid, iface_uid, addr, uri, logger)
+                    add_ip_address(host_uid, iface_uid, addr, syscat_url, logger)
             # Add IPv6 addresses
             if ifacetuple[1] and 'ipv6Addresses' in ifacetuple[1]:
                 for addr in ifacetuple[1]['ipv6Addresses']:
-                    add_ip_address(host_uid, iface_uid, addr, uri, logger)
+                    add_ip_address(host_uid, iface_uid, addr, syscat_url, logger)
             else:
                 logger.debug('No addresses found for interface with index number %s; moving on.',
                              str(ifacetuple[0].snmpindex))
     # Existing device: compare what's already there with what we have
     else:
-        existing = get_iface_list_from_syscat(host_uid, uri, logger)
+        existing = get_iface_list_from_syscat(host_uid, syscat_url, logger)
         logger.debug('Existing interfaces in Syscat:\n%s', jsonify(existing))
         if existing:
             # A more nuanced report is warranted here.
@@ -630,7 +629,7 @@ def populate_interfaces_flat_v1(host_uid, network, syscat_url, logger, newdevice
                                     for addr in details['addresses']['ipv4Addresses']['discovered-only']:
                                         logger.info('Attempting to add newly-discovered address %s to interface %s',
                                                     addr.with_prefixlen, iface)
-                                        add_ip_address(host_uid, iface, addr, uri, logger)
+                                        add_ip_address(host_uid, iface, addr, syscat_url, logger)
                                 # Remove addresses that have gone away
                                 if 'syscat-only' in details['addresses']['ipv4Addresses']:
                                     for addr in details['addresses']['ipv4Addresses']['syscat-only']:
@@ -651,9 +650,18 @@ def populate_interfaces_flat_v1(host_uid, network, syscat_url, logger, newdevice
         else:
             logger.debug('Syscat has no network interfaces recorded for this device.')
             if discovered:
-                for iface in discovered:
-                    logger.info('Adding interface %s to %s', iface, host_uid)
-                    add_interface(host_uid, iface, syscat_url, logger)
+                for iface_uid, ifacetuple in discovered.items():
+                    logger.info('Adding interface %s to %s', iface_uid, host_uid)
+                    # Add the interface
+                    add_interface(host_uid, iface_uid, ifacetuple[0], syscat_url, logger)
+                    # Now add any addresses we found on it
+                    if ifacetuple[1]:
+                        if 'ipv4Addresses' in ifacetuple[1]:
+                            for addr in ifacetuple[1]['ipv4Addresses']:
+                                add_ip_address(host_uid, iface_uid, addr, syscat_url, logger)
+                        if 'ipv6Addresses' in ifacetuple[1]:
+                            for addr in ifacetuple[1]['ipv6Addresses']:
+                                add_ip_address(host_uid, iface_uid, addr, syscat_url, logger)
             else:
                 logger.debug('No interfaces found on %s; how did we even query it?', host_uid)
 
