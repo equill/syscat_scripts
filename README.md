@@ -3,7 +3,18 @@ Syscat scripts
 
 Much as it sounds, a repo of scripts for interacting with Syscat.
 
-It's a new application, so there isn't much here yet.
+# Setup
+
+These scripts are in the `scripts` subdirectory. Yes, this thing's full of surprises.
+
+`./create_schema.py` will install the default schema, which you can then customise to your needs.
+
+`./default_dataset.py` will install a reasonable set of defaults, which you may wish to customise for your own environment.
+
+Both scripts are driven by YAML files, making it as easy as possible to manage them. If YAML sounds tedious to edit by hand, consider that the first iteration used JSON.
+
+Both scripts assume you're running Syscat on http://localhost:4950, so you may need to edit them on that basis, if nothing else.
+
 
 # Discovery
 
