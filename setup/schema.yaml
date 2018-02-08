@@ -334,6 +334,8 @@ relationships:
   uri: /devices/Member/devices
 - cardinality: many:1
   uri: /devices/HostedOn/devices
+- cardinality: 1:many
+  uri: /devices/Hosts/devices
 - cardinality: many:1
   uri: /devices/HostedOn/cpus
 - cardinality: '1:1'
