@@ -609,7 +609,7 @@ def populate_interfaces_flat_v1(host_uid, network, syscat_url, logger, newdevice
     # New device: just go ahead and add the details
     if newdevice:
         for iface_uid, ifacetuple in discovered.items():
-            add_interface_with_ip_addrs(host_uid, iface_uid, ifacetuple, syscat_url, logger)
+            return add_interface_with_ip_addrs(host_uid, iface_uid, ifacetuple, syscat_url, logger)
     # Existing device: compare what's already there with what we have
     else:
         existing = get_iface_list_from_syscat(host_uid, syscat_url, logger)
@@ -672,21 +672,28 @@ def populate_interfaces_flat_v1(host_uid, network, syscat_url, logger, newdevice
                         logger.info('Removing interface %s:%s because it doesn´t exist on the device.',
                                     host_uid, iface)
                         delete_interface(host_uid, iface, syscat_url, logger)
+                return True
         else:
             logger.debug('Syscat has no network interfaces recorded for this device.')
             if discovered:
                 for iface_uid, ifacetuple in discovered.items():
                     logger.info('Adding interface %s to %s', iface_uid, host_uid)
-                    add_interface_with_ip_addrs(host_uid, iface_uid, ifacetuple, syscat_url, logger)
+                    return add_interface_with_ip_addrs(host_uid,
+                                                       iface_uid,
+                                                       ifacetuple,
+                                                       syscat_url,
+                                                       logger)
             else:
                 logger.debug('No interfaces found on %s; how did we even query it?', host_uid)
+                return False
 
 def discover_into_syscat_v1(address,        # IP address, FQDN or otherwise resolvable address
                             name=None,      # Name of target device, to override the discovered one
                             use_sysname=False,  # Use the discovered sysName as the Syscat UID
                             snmpcommunity="public",
                             syscat_url="http://localhost:4950", # Default base URL for Syscat
-                            loglevel="info" # Default loglevel
+                            loglevel="info", # Default loglevel
+                            logger_arg=None
                            ):
     """
     Ensure that there's an entry in Syscat for the device we just discovered.
@@ -699,9 +706,12 @@ def discover_into_syscat_v1(address,        # IP address, FQDN or otherwise reso
             - existing: <value currently in Syscat>
             - discovered: <value discovered just now>
     """
-    # Create the logger
-    logger = create_logger(loglevel=loglevel)
-    logger.info("Performing discovery on device at %s", address)
+    # Establish logging
+    if logger_arg:
+        logger = logger_arg
+    else:
+        logger = create_logger(loglevel=loglevel)
+        logger.info("Performing discovery on device at %s", address)
     # Perform discovery
     device = netdescribe.snmp.device_discovery.explore_device(address, logger, snmpcommunity)
     logger.debug("Result of discovery was:\n%s", jsonify(device))
