@@ -201,13 +201,22 @@ def compare_discovered_device_to_syscat(discovered, syscat, logger):
         - existing = <value already in Syscat>
     '''
     diffs = {}
+    # Lookup table for matching the attribute names between Syscat and SNMP discovery:
+    # - first entry in each pair is the Syscat name for it
+    # - second entry is the SNMP attribute name
     for attr in [('sysname', 'sysName'),
                  ('sysdescr', 'sysDescr')]:
         # Make it easier to follow the references, because case-sensitivity
-        s_attr = attr[0]  # Syscat name for the attribute
-        s_val = syscat[s_attr]
+        s_attr = attr[0]    # Syscat name for the attribute
         d_attr = attr[1]    # Netdescribe name for the attribute
+        # Try to retrieve the value from Syscat, but default to None
+        if s_attr in syscat:
+            s_val = syscat[s_attr]
+        else:
+            s_val = None
+        # Get the discovered value
         d_val = discovered['sysinfo'][d_attr]
+        # Compare them and act on the result
         if d_val != s_val:
             logger.debug('Discovered %s "%s" differs from existing %s "%s"',
                          d_attr, d_val, s_attr, s_val)
@@ -255,15 +264,15 @@ def discovered_ifaces_to_syscat_format(network, logger):
                 else:
                     logger.warn('Purported address %s of type %s found', addr, type(addr))
         # Construct the SyscatIface namedtuple to append to the list.
-        ifaces[sanitise_uid(iface_uid)] = ((SyscatIface(snmpindex=index,
-                                                        ifname=details['ifName'],
-                                                        ifdescr=details['ifDescr'],
-                                                        ifalias=details['ifAlias'],
-                                                        iftype=details['ifType'],
-                                                        ifspeed=details['ifSpeed'],
-                                                        ifhighspeed=details['ifHighSpeed'],
-                                                        ifphysaddress=details['ifPhysAddress']),
-                                            addrs))
+        ifaces[sanitise_uid(iface_uid)] = (SyscatIface(snmpindex=index,
+                                                       ifname=details['ifName'],
+                                                       ifdescr=details['ifDescr'],
+                                                       ifalias=details['ifAlias'],
+                                                       iftype=details['ifType'],
+                                                       ifspeed=details['ifSpeed'],
+                                                       ifhighspeed=details['ifHighSpeed'],
+                                                       ifphysaddress=details['ifPhysAddress']),
+                                           addrs)
     # Return the list
     logger.debug('Output structure of iface data:\n%s', jsonify(ifaces))
     return ifaces
@@ -369,6 +378,8 @@ def get_iface_list_from_syscat(host_uid, syscat_url, logger):
     namedtuple, address dict) tuples, to match the output of discovered_ifaces_to_syscat_format.
     '''
     logger.debug('Retrieving list of interfaces for %s from Syscat.', host_uid)
+    # Create the result accumulator now
+    ifacedict = {}
     # Get the list of interfaces for this device
     uri = '{}/raw/v1/devices/{}/Interfaces/networkInterfaces'.format(syscat_url, host_uid)
     logger.debug('Using URI %s', uri)
@@ -376,14 +387,14 @@ def get_iface_list_from_syscat(host_uid, syscat_url, logger):
     # If it has none, bail out now.
     if response.status_code == 404:
         logger.debug('No interfaces found for %s', host_uid)
-        return None
+        return ifacedict
     # If something else went wrong, fail noisily.
     elif response.status_code != 200:
-        logger.error('Failed to retrieve list: %s %s', response.status_code, response.text)
+        logger.error('Failed to retrieve interface list from %s: %s %s',
+                     host_uid, response.status_code, response.text)
         sys.exit(1)
     # If we got this far, presumably we have a list
     logger.debug('Raw iface data retrieved from Syscat:\n%s', jsonify(response.json()))
-    ifacedict = {}
     # For each interface, get its list of addresses, then assemble the lot in output format
     for iface in response.json():
         # Assemble the namedtuple and append it to the accumulator
@@ -609,7 +620,7 @@ def populate_interfaces_flat_v1(host_uid, network, syscat_url, logger, newdevice
     # New device: just go ahead and add the details
     if newdevice:
         for iface_uid, ifacetuple in discovered.items():
-            return add_interface_with_ip_addrs(host_uid, iface_uid, ifacetuple, syscat_url, logger)
+            add_interface_with_ip_addrs(host_uid, iface_uid, ifacetuple, syscat_url, logger)
     # Existing device: compare what's already there with what we have
     else:
         existing = get_iface_list_from_syscat(host_uid, syscat_url, logger)
@@ -678,7 +689,7 @@ def populate_interfaces_flat_v1(host_uid, network, syscat_url, logger, newdevice
             if discovered:
                 for iface_uid, ifacetuple in discovered.items():
                     logger.info('Adding interface %s to %s', iface_uid, host_uid)
-                    return add_interface_with_ip_addrs(host_uid,
+                    add_interface_with_ip_addrs(host_uid,
                                                        iface_uid,
                                                        ifacetuple,
                                                        syscat_url,
