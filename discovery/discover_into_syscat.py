@@ -38,10 +38,15 @@ class IPInterfaceEncoder(json.JSONEncoder):
     Enable rendering interface objects in JSON.
      """
     def default(self, obj):
+        # Handle instances of IPv4Interface and IPv6Interface
         if isinstance(obj, (ipaddress.IPv4Interface, ipaddress.IPv6Interface)):
             return obj.with_prefixlen
-        # Let the base class default method raise the TypeError
+        # Fall back to the base class's default behaviour for anything else
         return json.JSONEncoder.default(self, obj)
+
+def jsonify(data):
+    "Pretty-print a data structure in JSON, for output to logs."
+    return json.dumps(data, indent=4, sort_keys=True, cls=IPInterfaceEncoder)
 
 def dictdefault(key, data, default=None):
     "Returns either the entry from a dict corresponding to the key, or a default value."
@@ -50,10 +55,6 @@ def dictdefault(key, data, default=None):
     else:
         returnval = default
     return returnval
-
-def jsonify(data):
-    "Pretty-print a data structure in JSON, for output to logs."
-    return json.dumps(data, indent=4, sort_keys=True, cls=IPInterfaceEncoder)
 
 def sanitise_uid(uid):
     "Sanitise a UID string in the same way Restagraph does"
@@ -215,54 +216,51 @@ def compare_discovered_device_to_syscat(discovered, syscat, logger):
         else:
             s_val = None
         # Get the discovered value
-        d_val = discovered['sysinfo'][d_attr]
+        d_val = discovered['system'][d_attr]
         # Compare them and act on the result
         if d_val != s_val:
             logger.debug('Discovered %s "%s" differs from existing %s "%s"',
                          d_attr, d_val, s_attr, s_val)
-            # Ensure there's a 'sysinfo' entry in the accumulators
-            if 'sysinfo' not in diffs:
-                diffs['sysinfo'] = {}
+            # Ensure there's a 'system' entry in the accumulators
+            if 'system' not in diffs:
+                diffs['system'] = {}
             # Now prepare the update and the report
-            diffs['sysinfo'][s_attr] = {'discovered': d_val,
-                                        'existing': s_val}
+            diffs['system'][s_attr] = {'discovered': d_val,
+                                       'existing': s_val}
     return diffs
 
-def discovered_ifaces_to_syscat_format(network, logger):
+def discovered_ifaces_to_syscat_format(interfaces, logger):
     '''
-    Take the 'network' sub-tree of explore_device(), and return a dict of (SyscatIface namedtuple,
-    address dict) tuples, that approximates what we'd get if we extracted the equivalent tree from
-    Syscat.
+    Take the 'interfaces' sub-tree of explore_device(), and return a dict of
+    (SyscatIface namedtuple, address dict) tuples, that approximates what we'd get if we extracted
+    the equivalent tree from Syscat.
     Makes it much simpler to compare both sets.
-    Note that this function pre-sanitises the interface UID.
+    Note that this function pre-sanitises the interface UID, to correctly search for an existing
+    record of that interface in Syscat.
     '''
     logger.debug('Converting discovered iface data into Syscat format. Input structure is:\n%s',
-                 jsonify(network))
+                 jsonify(interfaces))
     ifaces = {} # Accumulator for the final output
-    for index, details in network['interfaces'].items():
+    for index, details in interfaces.items():
         logger.debug('Processing interface with ifTable index %s', index)
         # Decide the UID.
         # There's enough inconsistency among implementations to justify making this a discrete step.
         iface_uid = details['ifName']
         logger.debug('Interface UID selected: %s', iface_uid)
         # Enumerate any addresses the interface has
-        addrs = {}
-        if str(index) in network['ipIfaceAddrMap']: # Not all interfaces have addresses
-            for addr in network['ipIfaceAddrMap'][str(index)]:
-                if addr.version == 4:
-                    logger.debug('Adding IPv4 address %s', addr.with_prefixlen)
-                    # Ensure there's a subsection of the dict for these
-                    if 'ipv4Addresses' not in addrs:
-                        addrs['ipv4Addresses'] = []
-                    addrs['ipv4Addresses'].append(addr)
-                elif addr.version == 6:
-                    logger.debug('Adding IPv6 address %s', addr.with_prefixlen)
-                    # Ensure there's a subsection of the dict for these
-                    if 'ipv6Addresses' not in addrs:
-                        addrs['ipv6Addresses'] = []
-                    addrs['ipv6Addresses'].append(addr)
-                else:
-                    logger.warn('Purported address %s of type %s found', addr, type(addr))
+        addrs = []
+        for addr in details['addresses']:
+            if addr['protocol'] == 'ipv4':
+                logger.debug('Adding IPv4 address %s/%s', addr['address'], addr['prefixlength'])
+                addrs.append(ipaddress.IPv4Interface('{}/{}'.format(addr['address'],
+                                                                    addr['prefixlength'])))
+            elif addr['protocol'] == 'ipv6':
+                logger.debug('Adding IPv6 address %s/%s', addr['address'], addr['prefixlength'])
+                addrs.append(ipaddress.IPv6Interface('{}/{}'.format(addr['address'],
+                                                                    addr['prefixlength'])))
+            else:
+                logger.warn('Purported address %s of type %s found',
+                            addr['address'], addr['protocol'])
         # Construct the SyscatIface namedtuple to append to the list.
         ifaces[sanitise_uid(iface_uid)] = (SyscatIface(snmpindex=index,
                                                        ifname=details['ifName'],
@@ -280,13 +278,9 @@ def discovered_ifaces_to_syscat_format(network, logger):
 def get_addresses_for_iface(host_uid, iface_uid, syscat_url, logger):
     '''
     Retrieve a list of addresses for an interface.
-    Return them in a dict:
-    - ipv4Addresses
-        - list of IPv4Interface objects
-    - ipv6Addresses
-        - list of IPv6Interface objects
+    Return them as a list of IPv4Interface and IPv6Interface objects.
     '''
-    returnval = {}  # Accumulator for the result
+    returnval = []  # Accumulator for the result
     # IPv4 addresses
     # Extract the list of addresses for this interface
     logger.debug('Retrieving IPv4 addresses for interface %s:%s', host_uid, iface_uid)
@@ -301,36 +295,31 @@ def get_addresses_for_iface(host_uid, iface_uid, syscat_url, logger):
         for addr in addresponse.json():
             # Sanity-check: is this thing even valid?
             if 'uid' not in addr:
-                logger.error('Interface lacks a UID. Somebody bypassed the API: %s', addr)
+                logger.warnng('Interface lacks a UID. Somebody bypassed the API: %s', addr)
+                continue
             # Both UID and prefixlength -> create and add an entry for it
             elif 'uid' in addr and 'prefixlength' in addr:
-                # Ensure there's an IPv4 entry in the dict
-                if 'ipv4Addresses' not in returnval:
-                    returnval['ipv4Addresses'] = []
                 # Now create and add this entry
                 logger.debug('Adding IP address %s/%s', addr['uid'], addr['prefixlength'])
-                returnval['ipv4Addresses'].append(
+                returnval.append(
                     ipaddress.IPv4Interface('%s/%s' % (addr['uid'], addr['prefixlength'])))
             # Both UID and netmask -> create and add an entry for it
             elif 'uid' in addr and 'netmask' in addr:
-                # Ensure there's an IPv4 entry in the dict
-                if 'ipv4Addresses' not in returnval:
-                    returnval['ipv4Addresses'] = []
                 # Now create and add this entry
                 logger.debug('Adding IP address %s/%s', addr['uid'], addr['netmask'])
-                returnval['ipv4Addresses'].append(
+                returnval.append(
                     ipaddress.IPv4Interface('%s/%s' % (addr['uid'], addr['netmask'])))
             else:
                 logger.error('Address had a UID, but neither a prefixlength nor a netmask: %s',
                              addr)
-    # No addresses for this interface; just return an empty dict
+    # No IPv4 addresses for this interface: log this fact and carry on
     elif addresponse.status_code == 404:
-        logger.debug('No addresses found for %s:%s', host_uid, iface_uid)
+        logger.debug('No IPv4 addresses found for %s:%s', host_uid, iface_uid)
     # Unexpected response code; fail noisily
     else:
-        logger.error('Unexpected response while querying addresses for interface %s:%s - %s %s',
+        logger.error('Unexpected response while querying IPv4 addresses for %s:%s - %s %s',
                      host_uid, iface_uid, addresponse.status_code, addresponse.text)
-        sys.exit(1)
+        return False
     #
     # IPv6 addresses
     # Extract the list of addresses for this interface
@@ -349,23 +338,20 @@ def get_addresses_for_iface(host_uid, iface_uid, syscat_url, logger):
                 logger.error('Interface lacks a UID. Somebody bypassed the API: %s', addr)
             # Both UID and prefixlength -> create and add an entry for it
             elif 'uid' in addr and 'prefixlength' in addr:
-                # Ensure there's an IPv6 entry in the dict
-                if 'ipv6Addresses' not in returnval:
-                    returnval['ipv6Addresses'] = []
                 # Now create and add this entry
                 logger.debug('Adding IP address %s/%s', addr['uid'], addr['prefixlength'])
-                returnval['ipv6Addresses'].append(
+                returnval.append(
                     ipaddress.IPv6Interface('%s/%s' % (addr['uid'], addr['prefixlength'])))
             else:
                 logger.error('Address had a UID, but no prefixlength: %s', addr)
-    # No addresses for this interface; just return an empty dict
+    # No IPv6 addresses for this interface; log the fact
     elif addresponse.status_code == 404:
-        logger.debug('No addresses found for %s:%s', host_uid, iface_uid)
+        logger.debug('No IPv6 addresses found for %s:%s', host_uid, iface_uid)
     # Unexpected response code; fail noisily
     else:
-        logger.error('Unexpected response while querying addresses for interface %s:%s - %s %s',
+        logger.error('Unexpected response while querying IPv6 addresses for %s:%s - %s %s',
                      host_uid, iface_uid, addresponse.status_code, addresponse.text)
-        sys.exit(1)
+        return False
     #
     # Return what we found
     logger.debug('Full Syscat address list for %s:%s\n%s', host_uid, iface_uid, jsonify(returnval))
@@ -445,83 +431,66 @@ def compare_addr_lists(iface, discovered, existing, logger):
         logger.debug('Addresses for interface %s match; no action required.', iface)
         return None
     # Some mismatch found
-    logger.debug('Addresses for interface %s don´t match; do something here.', iface)
+    logger.debug('Addresses for interface %s don´t match; calculating the diffs.', iface)
     diffs = {}
-    # IPv4 addresses
+    # IP addresses
     # Addresses discovered but not in Syscat
-    if 'ipv4Addresses' in discovered:
-        # If there are some in both, compare them to find the exact differences
-        if 'ipv4Addresses' in existing:
-            # Start with the discovered ones
-            for disc_addr in discovered['ipv4Addresses']:
-                logger.debug('Checking discovered %s "%s against existing IPv4 addresses"',
-                             type(disc_addr), disc_addr)
-                match = False   # Flag to indicate whether we've found one
-                for exist in existing['ipv4Addresses']:
-                    logger.debug('Checking it against %s "%s"', type(exist), exist)
-                    # Exact match - nothing to do
-                    if disc_addr.with_prefixlen == exist.with_prefixlen:
-                        logger.debug('Exact match for IPv4 address %s', disc_addr)
-                        match = True
-                        break   # Stop checking the existing addresses now
-                    # Address matches, but prefix-length does not;
-                    # add them to the list of differing addresses.
-                    elif disc_addr.ip == exist.ip:
-                        logger.debug('Prefix-length differs between discovered %s and existing %s',
-                                     disc_addr, existing)
-                        # Ensure the dict has the necessary entries
-                        if 'ipv4Addresses' not in diffs:
-                            diffs['ipv4Addresses'] = {}
-                        if 'diffs' not in diffs['ipv4Addresses']:
-                            diffs['ipv4Addresses']['diffs'] = []
-                        # Add the entry
-                        diffs['ipv4Addresses']['diffs'].append({'discovered': disc_addr,
-                                                                'existing': exist})
-                        match = True
-                        break   # Stop checking the existing addresses now
-                # We've checked this discovered address against all the existing ones.
-                # Is it a new one?
-                if match is False:
-                    logger.debug('Discovered address %s is not already present', disc_addr)
-                    # Ensure there's an entry in the dict
-                    if 'discovered-only' not in diffs:
-                        diffs['discovered-only'] = []
-                    # Add the entry
-                    diffs['discovered-only'].append(disc_addr)
-            # Now check for existing ones with no match against discovered ones.
-            for exist_addr in existing['ipv4Addresses']:
-                logger.debug('Checking existing %s %s against discovered IPv4 addresses',
-                             type(exist_addr), exist_addr)
-                match = False   # Flag to indicate whether we've found one
-                for disc in discovered['ipv4Addresses']:
-                    if exist_addr.ip == disc.ip:
-                        match = True
-                        break   # Don't bother checking the rest
-                # Did we find a match?
-                if match is False:
-                    logger.debug('Adding %s "%s" to the existing-only list.',
-                                 type(exist_addr), exist_addr.with_prefixlen)
-                    # Ensure there's an entry in the dict
-                    if 'ipv4Addresses' not in diffs:
-                        diffs['ipv4Addresses'] = {}
-                    if 'syscat-only' not in diffs['ipv4Addresses']:
-                        diffs['ipv4Addresses']['syscat-only'] = []
-                    # Add it
-                    diffs['ipv4Addresses']['syscat-only'].append(exist_addr)
-        # If there aren't any in Syscat, don't bother with a comparison; just add the whole thing.
-        else:
-            logger.debug('IPv4 addresses discovered, but none existing. Adding them all:\n%s',
-                         jsonify(discovered['ipv4Addresses']))
-            diffs['ipv4Addresses'] = {'discovered-only': discovered['ipv4Addresses']}
-    # IPv4 addresses exist already, but none were discovered:
-    elif 'ipv4Addresses' in existing:
-        logger.debug('Ipv4 addresses existing, but none discovered: Recording them all:\n%s',
-                     jsonify(existing['ipv4Addresses']))
-        # Ensure there's an entry in the dict
-        if 'ipv4Addresses' not in diffs:
-            diffs['ipv4Addresses'] = {}
-        # Add them
-        diffs['ipv4Addresses']['syscat-only'] = existing['ipv4Addresses']
+    # Start with the discovered ones
+    for disc_addr in discovered:
+        logger.debug('Checking discovered %s "%s against existing IPv4 addresses"',
+                     type(disc_addr), disc_addr)
+        match = False   # Flag to indicate whether we've found one
+        for exist in existing:
+            logger.debug('Checking it against %s "%s"', type(exist), exist)
+            # Exact match - nothing to do
+            if disc_addr.with_prefixlen == exist.with_prefixlen:
+                logger.debug('Exact match for IPv4 address %s', disc_addr)
+                match = True
+                break   # Stop checking the existing addresses now
+            # Address matches, but prefix-length does not;
+            # add them to the list of differing addresses.
+            elif disc_addr.ip == exist.ip:
+                logger.debug('Prefix-length differs between discovered %s and existing %s',
+                             disc_addr, existing)
+                # Ensure the dict has the necessary entries
+                if 'ipv4Addresses' not in diffs:
+                    diffs = {}
+                if 'diffs' not in diffs:
+                    diffs['diffs'] = []
+                # Add the entry
+                diffs['diffs'].append({'discovered': disc_addr,
+                                       'existing': exist})
+                match = True
+                break   # Stop checking the existing addresses now
+        # We've checked this discovered address against all the existing ones.
+        # Is it a new one?
+        if match is False:
+            logger.debug('Discovered address %s is not already present', disc_addr)
+            # Ensure there's an entry in the dict
+            if 'discovered-only' not in diffs:
+                diffs['discovered-only'] = []
+            # Add the entry
+            diffs['discovered-only'].append(disc_addr)
+    # Now check for existing ones with no match against discovered ones.
+    for exist_addr in existing:
+        logger.debug('Checking existing %s %s against discovered IPv4 addresses',
+                     type(exist_addr), exist_addr)
+        match = False   # Flag to indicate whether we've found one
+        for disc in discovered:
+            if exist_addr.ip == disc.ip:
+                match = True
+                break   # Don't bother checking the rest
+        # Did we find a match?
+        if match is False:
+            logger.debug('Adding %s "%s" to the existing-only list.',
+                         type(exist_addr), exist_addr.with_prefixlen)
+            # Ensure there's an entry in the dict
+            if 'ipv4Addresses' not in diffs:
+                diffs = {}
+            if 'syscat-only' not in diffs:
+                diffs['syscat-only'] = []
+            # Add it
+            diffs['syscat-only'].append(exist_addr)
     # Return the result of the comparison
     logger.debug('compare_addr_lists returning diff-list for %s:\n%s', iface, jsonify(diffs))
     return diffs
@@ -599,7 +568,7 @@ def compare_iface_lists(discovered, syscat, logger):
             diffs['syscat-only'].append(sysc_key)
     return diffs
 
-def populate_interfaces_flat_v1(host_uid, network, syscat_url, logger, newdevice=False):
+def populate_interfaces_flat(host_uid, network, syscat_url, logger, newdevice=False):
     '''
     Add interface details to a device.
     Just attach each interface directly to the device, without making any attempt
@@ -621,6 +590,7 @@ def populate_interfaces_flat_v1(host_uid, network, syscat_url, logger, newdevice
     if newdevice:
         for iface_uid, ifacetuple in discovered.items():
             add_interface_with_ip_addrs(host_uid, iface_uid, ifacetuple, syscat_url, logger)
+        return True
     # Existing device: compare what's already there with what we have
     else:
         existing = get_iface_list_from_syscat(host_uid, syscat_url, logger)
@@ -684,35 +654,33 @@ def populate_interfaces_flat_v1(host_uid, network, syscat_url, logger, newdevice
                                     host_uid, iface)
                         delete_interface(host_uid, iface, syscat_url, logger)
                 return True
-        else:
-            logger.debug('Syscat has no network interfaces recorded for this device.')
-            if discovered:
-                for iface_uid, ifacetuple in discovered.items():
-                    logger.info('Adding interface %s to %s', iface_uid, host_uid)
-                    add_interface_with_ip_addrs(host_uid,
-                                                       iface_uid,
-                                                       ifacetuple,
-                                                       syscat_url,
-                                                       logger)
-            else:
-                logger.debug('No interfaces found on %s; how did we even query it?', host_uid)
-                return False
+        logger.debug('Syscat has no network interfaces recorded for this device.')
+        if discovered:
+            for iface_uid, ifacetuple in discovered.items():
+                logger.info('Adding interface %s to %s', iface_uid, host_uid)
+                add_interface_with_ip_addrs(host_uid,
+                                            iface_uid,
+                                            ifacetuple,
+                                            syscat_url,
+                                            logger)
+            return True
+        logger.debug('No interfaces found on %s; how did we even query it?', host_uid)
+        return False
 
-def discover_into_syscat_v1(address,        # IP address, FQDN or otherwise resolvable address
-                            name=None,      # Name of target device, to override the discovered one
-                            use_sysname=False,  # Use the discovered sysName as the Syscat UID
-                            snmpcommunity="public",
-                            syscat_url="http://localhost:4950", # Default base URL for Syscat
-                            loglevel="info", # Default loglevel
-                            logger_arg=None
-                           ):
+def discover_into_syscat(address,        # IP address, FQDN or otherwise resolvable address
+                         name=None,      # Name of target device, to override the discovered one
+                         use_sysname=False,  # Use the discovered sysName as the Syscat UID
+                         snmpcommunity="public",
+                         syscat_url="http://localhost:4950", # Default base URL for Syscat
+                         loglevel="info", # Default loglevel
+                         logger_arg=None):
     """
     Ensure that there's an entry in Syscat for the device we just discovered.
     Update existing instances, and return a dict describing any updates.
     Return True if the result was a new entry; otherwise, return a dict describing the updates.
     Assumes version 1 of the Syscat API.
     Structure of the return value:
-    - sysinfo
+    - system
         - <attribute-name>
             - existing: <value currently in Syscat>
             - discovered: <value discovered just now>
@@ -724,13 +692,15 @@ def discover_into_syscat_v1(address,        # IP address, FQDN or otherwise reso
         logger = create_logger(loglevel=loglevel)
         logger.info("Performing discovery on device at %s", address)
     # Perform discovery
-    device = netdescribe.snmp.device_discovery.explore_device(address, logger, snmpcommunity)
-    logger.debug("Result of discovery was:\n%s", jsonify(device))
+    response = netdescribe.snmp.device_discovery.explore_device(address, logger, snmpcommunity)
+    logger.debug("Result of discovery was:\n%s", response.as_json())
+    # Get the "raw" dict of namedtuples, not the JSON transformation
+    device = response.as_dict()
     # Resolve the device's UID
     if name:
         uid = name
-    elif use_sysname and device['sysinfo']['sysName'] and device['sysinfo']['sysName'] != "":
-        uid = device['sysinfo']['sysName']
+    elif use_sysname and device['system']['sysName'] and device['system']['sysName'] != "":
+        uid = device['system']['sysName']
     else:
         uid = address
     logger.debug("Using name '%s' for device", uid)
@@ -741,8 +711,8 @@ def discover_into_syscat_v1(address,        # IP address, FQDN or otherwise reso
         logger.debug("%s is not present in Syscat; creating it.", uid)
         # Create the device entry itself
         add_device(uid,
-                   device['sysinfo']['sysName'],
-                   device['sysinfo']['sysDescr'],
+                   device['system']['sysName'],
+                   device['system']['sysDescr'],
                    syscat_url,
                    logger)
         created_new_device = True
@@ -750,30 +720,30 @@ def discover_into_syscat_v1(address,        # IP address, FQDN or otherwise reso
     elif existing_response.status_code == 200:
         logger.debug("%s is already present in Syscat. Ensuring it's up to date...", uid)
         created_new_device = False
-        # Compare the sysinfo attributes
+        # Compare the system attributes
         diffs = compare_discovered_device_to_syscat(device, existing_response.json(), logger)
         # Perform any necessary updates to the device's own attributes
-        if diffs and 'sysinfo' in diffs:
+        if diffs and 'system' in diffs:
             devices_url = "%s/raw/v1/devices" % syscat_url
             payload = {}
-            for attr, vals in diffs['sysinfo'].items():
+            for attr, vals in diffs['system'].items():
                 payload[attr] = vals['discovered']
-            logger.info('Updating sysinfo for %s with details %s', uid, payload)
+            logger.info('Updating system for %s with details %s', uid, payload)
             requests.put('%s/%s' % (devices_url, uid), data=payload)
         # No updates needed. Do mention this, so the user knows where we're up to
         else:
-            logger.debug('No sysinfo updates needed.')
+            logger.debug('No system updates needed.')
     # Something else happened.
     else:
         logger.critical("Syscat returned an unexpected result: %s %s",
                         existing_response.status_code, existing_response.text)
         sys.exit(1)
     # Now ensure its interfaces are correctly described
-    populate_interfaces_flat_v1(uid,
-                                device['network'],
-                                syscat_url,
-                                logger,
-                                newdevice=created_new_device)
+    populate_interfaces_flat(uid,
+                             device['interfaces'],
+                             syscat_url,
+                             logger,
+                             newdevice=created_new_device)
     # Return a report on what we updated.
     if created_new_device:
         return True
@@ -817,11 +787,11 @@ def process_cli():
     else:
         loglevel = "info"
     # Now discover stuff
-    discover_into_syscat_v1(args.address,
-                            name=args.name,
-                            use_sysname=args.use_sysname,
-                            snmpcommunity=args.community,
-                            loglevel=loglevel)
+    discover_into_syscat(args.address,
+                         name=args.name,
+                         use_sysname=args.use_sysname,
+                         snmpcommunity=args.community,
+                         loglevel=loglevel)
 
 if __name__ == "__main__":
     process_cli()
