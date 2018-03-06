@@ -46,10 +46,10 @@ def discover_device(syscat_url, community, logger, device):
         addr = response.json()[0]['uid']
         logger.info('Discovering {host} at address {addr}'.format(host=device['uid'],
                                                                   addr=addr))
-        discover_into_syscat.discover_into_syscat_v1(addr,
-                                                     device['uid'],
-                                                     snmpcommunity=community,
-                                                     logger_arg=logger)
+        discover_into_syscat.discover_into_syscat(addr,
+                                                  device['uid'],
+                                                  snmpcommunity=community,
+                                                  logger_arg=logger)
     else:
         logger.debug('No admin address found for {}'.format(device['uid']))
 
