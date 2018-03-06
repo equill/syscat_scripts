@@ -5,7 +5,7 @@ Much as it sounds, a repo of scripts for interacting with Syscat.
 
 # Setup
 
-These scripts are in the `scripts` subdirectory. Yes, this thing's full of surprises.
+These scripts are in the `setup` subdirectory. Yes, this thing's full of surprises.
 
 `./create_schema.py` will install the default schema, which you can then customise to your needs.
 
