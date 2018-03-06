@@ -239,14 +239,15 @@ def discovered_ifaces_to_syscat_format(interfaces, logger):
         # Enumerate any addresses the interface has
         addrs = []
         for addr in details['addresses']:
+            logger.info('Adding address %s', addr)
             if addr['protocol'] == 'ipv4':
-                logger.debug('Adding IPv4 address %s/%s', addr['address'], addr['prefixlength'])
+                logger.debug('Adding IPv4 address %s/%s', addr['address'], addr['prefixLength'])
                 addrs.append(ipaddress.IPv4Interface('{}/{}'.format(addr['address'],
-                                                                    addr['prefixlength'])))
+                                                                    addr['prefixLength'])))
             elif addr['protocol'] == 'ipv6':
-                logger.debug('Adding IPv6 address %s/%s', addr['address'], addr['prefixlength'])
+                logger.debug('Adding IPv6 address %s/%s', addr['address'], addr['prefixLength'])
                 addrs.append(ipaddress.IPv6Interface('{}/{}'.format(addr['address'],
-                                                                    addr['prefixlength'])))
+                                                                    addr['prefixLength'])))
             else:
                 logger.warn('Purported address %s of type %s found',
                             addr['address'], addr['protocol'])
@@ -678,6 +679,9 @@ def discover_into_syscat(address,        # IP address, FQDN or otherwise resolva
         logger.info("Performing discovery on device at %s", address)
     # Perform discovery
     response = netdescribe.snmp.device_discovery.explore_device(address, logger, snmpcommunity)
+    if not response:
+        logger.error('Failed to perform discovery on device at address %s', address)
+        return False
     logger.debug("Result of discovery was:\n%s", response.as_json())
     # Get the "raw" dict of namedtuples, not the JSON transformation
     device = response.as_dict()
