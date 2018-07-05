@@ -1,0 +1,28 @@
+version: "3"
+services:
+    neo4j:
+        image: neo4j:3.4.1
+        deploy:
+            replicas: 1
+        ports:
+            - "7676:7474"
+            - "7688:7687"
+        networks:
+            - syscatnet
+    syscat:
+        image: equill/syscat:0.2
+        deploy:
+            replicas: 1
+        ports:
+            - "4951:4950"
+        environment:
+            SYSCAT_LISTEN_ADDR: "0.0.0.0"
+            SYSCAT_LISTEN_PORT: 4950
+            SYSCAT_NEO4J_HOSTNAME: "neo4j"
+            SYSCAT_NEO4J_PORT: 7474
+            SYSCAT_NEO4J_USER: "neo4j"
+            SYSCAT_NEO4J_PASSWORD: "wallaby"
+        networks:
+            - syscatnet
+networks:
+    syscatnet:
