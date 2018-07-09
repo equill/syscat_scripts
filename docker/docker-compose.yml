@@ -7,6 +7,9 @@ services:
         ports:
             - "7676:7474"
             - "7688:7687"
+        volumes:
+            - /opt/syscat/data:/data
+            - /opt/syscat/logs:/logs
         networks:
             - syscatnet
     syscat:
@@ -26,3 +29,8 @@ services:
             - syscatnet
 networks:
     syscatnet:
+volumes:
+    syscatdata:
+        external: true
+    syscatlogs:
+        external: true
