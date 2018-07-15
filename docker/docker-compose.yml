@@ -17,16 +17,16 @@ services:
         deploy:
             replicas: 1
         ports:
-            - "4951:4950"
+            - "4951:4951"
+        networks:
+            - syscatnet
         environment:
             SYSCAT_LISTEN_ADDR: "0.0.0.0"
-            SYSCAT_LISTEN_PORT: 4950
+            SYSCAT_LISTEN_PORT: 4951
             SYSCAT_NEO4J_HOSTNAME: "neo4j"
             SYSCAT_NEO4J_PORT: 7474
             SYSCAT_NEO4J_USER: "neo4j"
             SYSCAT_NEO4J_PASSWORD: "wallaby"
-        networks:
-            - syscatnet
 networks:
     syscatnet:
 volumes:
