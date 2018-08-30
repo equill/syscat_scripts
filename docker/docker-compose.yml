@@ -31,6 +31,9 @@ services:
             SYSCAT_NEO4J_PASSWORD: "wallaby"
 networks:
     syscatnet:
+        config:
+            - subnet: 10.255.127.0/24
+              gateway: 10.255.127.1
 volumes:
     syscatdata:
         external: true
