@@ -5,13 +5,10 @@ services:
         deploy:
             replicas: 1
         ports:
-            - "7676:7474"
-            - "7688:7687"
-        volumes:
-            - /opt/syscat/data:/data
-            - /opt/syscat/logs:/logs
+            - "7678:7474"
+            - "7690:7687"
         networks:
-            - syscatnet
+            - syscat_disc
         environment:
             NEO4J_AUTH: "neo4j/wallaby"
     syscat:
@@ -19,9 +16,9 @@ services:
         deploy:
             replicas: 1
         ports:
-            - "4951:4949"
+            - "4953:4949"
         networks:
-            - syscatnet
+            - syscat_disc
         environment:
             SYSCAT_LISTEN_ADDR: "0.0.0.0"
             SYSCAT_LISTEN_PORT: 4949
@@ -30,10 +27,4 @@ services:
             SYSCAT_NEO4J_USER: "neo4j"
             SYSCAT_NEO4J_PASSWORD: "wallaby"
 networks:
-    syscatnet:
-
-#volumes:
-#    syscatdata:
-#        external: true
-#    syscatlogs:
-#        external: true
+    syscat_disc:
