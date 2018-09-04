@@ -45,6 +45,8 @@ def post(uri, data, logger, expected=201):
     """
     url = '%s/%s' % (SYSCAT_URI, uri)
     logger.debug('POSTing to %s with data %s' % (url, data))
+    if 'uid' not in data or data['uid'] == "''":
+        return False
     response = requests.post(url, data=data)
     if response.status_code != expected:
         logger.warning(
@@ -201,7 +203,7 @@ def create_device(details, logger):
     # Owner
     if details['customer'] and details['customer'] != None:
         logger.debug('Connecting device %s to customer %s',
-                     (details['name'], details['name']))
+                     details['name'], details['customer'])
         post('devices/%s/BusinessOwner' % sanitise_uid(details['name'], logger),
              {'target': '/organisations/%s' % sanitise_uid(details['customer'], logger)},
              logger)
@@ -209,7 +211,7 @@ def create_device(details, logger):
     if (details['hw_model']) and (details['hw_model'] != None) and (details['manufacturer']) and (
             details['manufacturer'] != None):
         logger.debug('Connecting device %s to model %s/%s',
-                     (details['name'], details['manufacturer'], details['hw_model']))
+                     details['name'], details['manufacturer'], details['hw_model'])
         post('devices/%s/Model' % sanitise_uid(details['name'], logger),
              {'target': '/brands/%s/Produces/models/%s'
                         % (sanitise_uid(details['manufacturer'], logger),
@@ -217,7 +219,7 @@ def create_device(details, logger):
              logger)
     # OS
     if (details['os']) and (details['os'] != None):
-        logger.debug('Connecting device %s to OS %s', (details['name'], details['os']))
+        logger.debug('Connecting device %s to OS %s', details['name'], details['os'])
         post('devices/%s/OperatingSystem' % sanitise_uid(details['name'], logger),
              {'target': '/operatingSystems/%s' % (sanitise_uid(details['os'], logger))},
              logger)
