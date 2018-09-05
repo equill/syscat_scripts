@@ -8,6 +8,7 @@ For migrating data from Device42 to Syscat
 import requests
 
 # Built-in modules
+import ipaddress
 import json
 import logging
 import re
@@ -38,16 +39,26 @@ def jsonify(data):
     "Render data in human-friendly JSON format"
     json.dumps(data, indent=4, sort_keys=True)
 
-def post(uri, data, logger, expected=201):
+def post(uri, data, logger, expected=201, api=False):
     """
     Post data to Syscat.
     Deliberately terse and minimal, because we do nothing with the output.
     """
-    url = '%s/%s' % (SYSCAT_URI, uri)
+    # Construct the API substring for the URL
+    if api == "raw":
+        api_string = "raw/v1"
+    if api == "ipam":
+        api_string = "ipam/v1"
+    else:
+        api_string = "raw/v1"
+    # Construct the URL
+    url = '%s/%s/%s' % (SYSCAT_URL, api_string, uri)
     logger.debug('POSTing to %s with data %s' % (url, data))
-    if 'uid' not in data or data['uid'] == "''":
+    if 'uid' in data and data['uid'] == "''":
+        logger.debug("UID was specified as ''.")
         return False
     response = requests.post(url, data=data)
+    # Report how it went
     if response.status_code != expected:
         logger.warning(
             'Status {rec} does not match expected {exp}. URL was {url}, data was {data}'.format(
@@ -55,6 +66,9 @@ def post(uri, data, logger, expected=201):
                 exp=expected,
                 url=url,
                 data=data))
+    else:
+        logger.debug('Response status matched expected value.')
+    # Return the response
     return response
 
 def sanitise_uid(uid, logger):
@@ -276,7 +290,7 @@ def migrate_vms(logger):
                      logger)
 
 def migrate_vrf_groups(logger):
-    "Migrate VRF-group definitions into Syscat."
+    "Migrate VRF-group definitions into Syscat. Assume they all belong to the default organisation."
     logger.info('Copying VRF groups into Syscat')
     # Create the default organisation
     post('organisations', {'uid': DEFAULT_ORG}, logger)
@@ -291,25 +305,40 @@ def migrate_subnets(logger):
     logger.info('Copying subnets into Syscat')
     for subnet in requests.get('%s/subnets/'
                                % D42_URI, auth=(D42_USER, D42_PASSWD)).json()['subnets']:
+        logger.info('Processing subnet {}/{}'.format(
+            subnet['network'],
+            subnet['mask_bits']))
+        # Turn it into a python object
+        addr_obj = ipaddress.ip_network('{}/{}'.format(
+            subnet['network'],
+            subnet['mask_bits']))
+        # Insert the subnet itself.
+        # The API doesn't support description strings yet, so don't pass that through.
+        logger.debug('Attempting to add subnet %s' % addr_obj.with_prefixlen)
+        post('subnets',
+             {
+                 'org': DEFAULT_ORG,
+                 'subnet': addr_obj.with_prefixlen,
+                 'vrf': subnet['vrf_group_name']
+             },
+             logger,
+             api="ipam")
+        # Tags
+        for tag in subnet['tags']:
+            post('organisations/{}/Tags'.format(DEFAULT_ORG),
+                 {'target': '/tags/{}'.format(tag)},
+                 logger)
         # Look up the customer name from the ID
-        logger.debug('Looking up name for customer ID {}'.format(subnet['customer_id']))
-        if subnet['customer_id']:
-            customer = CUSTOMER_CACHE[str(subnet['customer_id'])]
-        else:
-            customer = 'Unknown'
-        # Insert the subnet itself
-        post('organisations/{}/VrfGroups/{}/Subnets/ipv4Subnets'.format(
-            customer, subnet['vrf_group_name']),
-             {'uid': subnet['network'],
-              'prefixlength': subnet['mask_bits'],
-              'description': subnet['description']},
-             logger)
+        # Will be used for linking subnets to customers
+        #logger.debug('Looking up name for customer ID {}'.format(subnet['customer_id']))
+        #if subnet['customer_id']:
+        #    customer = CUSTOMER_CACHE[str(subnet['customer_id'])]
+        #else:
+        #    customer = DEFAULT_ORG
+        #
         # Now link it to a customer,
         # using the cache to avoid a D42 lookup for every last subnet
         #post('~A/Owner' % result.text, {'target': '/organisations/{}'.format(customer)}, logger)
-        # Tags
-        for tag in subnet['tags']:
-            post('organisations/{}'.format(DEFAULT_ORG), {'target': '/tags/{}'.format(tag)}, logger)
 
 def migrate_all_the_things():
     "Pull it all together"
@@ -328,7 +357,7 @@ def migrate_all_the_things():
     migrate_vms(logger)
     # IPAM
     migrate_vrf_groups(logger)
-    #migrate_subnets(logger)
+    migrate_subnets(logger)
 
 if __name__ == '__main__':
     migrate_all_the_things()
