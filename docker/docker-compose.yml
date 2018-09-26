@@ -15,7 +15,7 @@ services:
         environment:
             NEO4J_AUTH: "neo4j/wallaby"
     syscat:
-        image: equill/syscat:0.4.0a1
+        image: equill/syscat:0.4.0
         deploy:
             replicas: 1
         ports:
