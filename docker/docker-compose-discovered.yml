@@ -6,13 +6,13 @@ services:
             replicas: 1
         ports:
             - "7678:7474"
-            - "7690:7687"
+            - "7692:7687"
         networks:
             - syscat_disc
         environment:
             NEO4J_AUTH: "neo4j/wallaby"
     syscat:
-        image: equill/syscat:0.4.0
+        image: equill/syscat:0.4.2
         deploy:
             replicas: 1
         ports:
