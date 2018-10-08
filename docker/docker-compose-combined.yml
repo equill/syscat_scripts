@@ -1,0 +1,57 @@
+version: "3"
+services:
+    neo4j_exp:
+        image: neo4j:3.4.1
+        deploy:
+            replicas: 1
+        ports:
+            - "7679:7474"
+            - "7691:7687"
+        networks:
+            - syscat_exp
+        environment:
+            NEO4J_AUTH: "neo4j/wallaby"
+    syscat_exp:
+        image: equill/syscat:0.4.2
+        deploy:
+            replicas: 1
+        ports:
+            - "4952:4949"
+        networks:
+            - syscat_exp
+        environment:
+            SYSCAT_LISTEN_ADDR: "0.0.0.0"
+            SYSCAT_LISTEN_PORT: 4949
+            SYSCAT_NEO4J_HOSTNAME: "neo4j_exp"
+            SYSCAT_NEO4J_PORT: 7474
+            SYSCAT_NEO4J_USER: "neo4j"
+            SYSCAT_NEO4J_PASSWORD: "wallaby"
+    neo4j_disc:
+        image: neo4j:3.4.1
+        deploy:
+            replicas: 1
+        ports:
+            - "7678:7474"
+            - "7692:7687"
+        networks:
+            - syscat_disc
+        environment:
+            NEO4J_AUTH: "neo4j/wallaby"
+    syscat_disc:
+        image: equill/syscat:0.4.2
+        deploy:
+            replicas: 1
+        ports:
+            - "4953:4949"
+        networks:
+            - syscat_disc
+        environment:
+            SYSCAT_LISTEN_ADDR: "0.0.0.0"
+            SYSCAT_LISTEN_PORT: 4949
+            SYSCAT_NEO4J_HOSTNAME: "neo4j_disc"
+            SYSCAT_NEO4J_PORT: 7474
+            SYSCAT_NEO4J_USER: "neo4j"
+            SYSCAT_NEO4J_PASSWORD: "wallaby"
+networks:
+    syscat_exp:
+    syscat_disc:
