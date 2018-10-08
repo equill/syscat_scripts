@@ -12,7 +12,7 @@ services:
         environment:
             NEO4J_AUTH: "neo4j/wallaby"
     syscat_exp:
-        image: equill/syscat:0.4.2
+        image: equill/syscat:0.4.3
         deploy:
             replicas: 1
         ports:
@@ -38,7 +38,7 @@ services:
         environment:
             NEO4J_AUTH: "neo4j/wallaby"
     syscat_disc:
-        image: equill/syscat:0.4.2
+        image: equill/syscat:0.4.3
         deploy:
             replicas: 1
         ports:
