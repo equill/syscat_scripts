@@ -14,7 +14,7 @@ services:
         volumes:
             - exp_data:/data
     syscat_exp:
-        image: equill/syscat:0.4.5
+        image: equill/syscat:0.4.6
         deploy:
             replicas: 1
         ports:
@@ -42,7 +42,7 @@ services:
         volumes:
             - disc_data:/data
     syscat_disc:
-        image: equill/syscat:0.4.5
+        image: equill/syscat:0.4.6
         deploy:
             replicas: 1
         ports:
