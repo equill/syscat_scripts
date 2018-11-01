@@ -14,7 +14,7 @@ services:
         volumes:
             - exp_data:/data
     syscat_exp:
-        image: equill/syscat:0.4.7
+        image: equill/syscat_allocated:0.1
         deploy:
             replicas: 1
         ports:
@@ -42,7 +42,7 @@ services:
         volumes:
             - disc_data:/data
     syscat_disc:
-        image: equill/syscat:0.4.7
+        image: equill/syscat_discovered:0.1
         deploy:
             replicas: 1
         ports:
@@ -50,12 +50,12 @@ services:
         networks:
             - syscat_disc
         environment:
-            SYSCAT_LISTEN_ADDR: "0.0.0.0"
-            SYSCAT_LISTEN_PORT: 4949
-            SYSCAT_NEO4J_HOSTNAME: "neo4j_disc"
-            SYSCAT_NEO4J_PORT: 7474
-            SYSCAT_NEO4J_USER: "neo4j"
-            SYSCAT_NEO4J_PASSWORD: "wallaby"
+            LISTEN_ADDR: "0.0.0.0"
+            LISTEN_PORT: 4949
+            NEO4J_HOSTNAME: "neo4j_disc"
+            NEO4J_PORT: 7474
+            NEO4J_USER: "neo4j"
+            NEO4J_PASSWORD: "wallaby"
 networks:
     syscat_exp:
     syscat_disc:
