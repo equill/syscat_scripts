@@ -32,7 +32,6 @@ def jsonify(data):
 def post(syscat_url, uri, data, logger, expected=201, api=False):
     """
     POST data to Syscat.
-    Deliberately terse and minimal, because we do nothing with the output.
     """
     # Construct the API substring for the URL
     if api == "raw":
@@ -74,7 +73,7 @@ def put(syscat_url, uri, uid, data, logger, expected=201, api=False):
     else:
         api_string = "raw/v1"
     # Construct the URL
-    url = '{}/{}/{}/{}'.format(syscat_url, api_string, uri, uid)
+    url = '{}/{}/{}/{}'.format(syscat_url, api_string, re.sub('^/', '', uri), uid)
     logger.debug('PUTting to {} with data {}'.format(url, data))
     if 'uid' in data and data['uid'] == "''":
         logger.debug("UID was specified as ''.")
@@ -117,8 +116,10 @@ def create_logger(loglevel, logfile=False, loglevel_file=False):
     # Create the logger
     logger = logging.getLogger('device42_migration')
     # Set defaults within the logger
-    logger.setLevel(LOGLEVELS[loglevel])
     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    # This is the base level at which log-messages are handled; the handlers apply their own
+    # filtering on top of this. I.e, all messages below this level will be discarded regardless.
+    logger.setLevel(logging.DEBUG)
     # Standard output
     stdout = logging.StreamHandler()
     stdout.setFormatter(formatter)
@@ -156,24 +157,24 @@ def migrate_customers(device42, syscat, logger):
         post(syscat.url, 'organisations', {'uid': cust['name']}, logger)
         # Add its attributes
         put(syscat.url,
-            'organisations',
+            '/organisations',
             sanitise_uid(cust['name'], logger),
-            {'comments': cust['notes']},
+            {'description': cust['notes']},
             logger)
     # Provide some useful feedback
     logger.debug('Customer cache:\n{}'.format(json.dumps(customer_cache, indent=4, sort_keys=True)))
     return customer_cache
 
-def migrate_brands(device42, syscat, logger):
+def migrate_makes(device42, syscat, logger):
     "Copy brand definitions into Syscat."
-    logger.info('Copying brands into Syscat')
+    logger.info('Copying makes into Syscat')
     for vendor in requests.get('{}/vendors/'.format(device42.uri),
                                auth=(device42.user, device42.passwd)).json()['vendors']:
-        post(syscat.url, 'brands', {'uid': vendor['name'], 'comments': vendor['notes']}, logger)
+        post(syscat.url, 'makes', {'uid': vendor['name'], 'description': vendor['notes']}, logger)
         put(syscat.url,
-            'brands',
+            '/makes',
             sanitise_uid(vendor['name'], logger),
-            {'comments': vendor['notes']},
+            {'description': vendor['notes']},
             logger)
 
 def migrate_models(device42, syscat, logger):
@@ -183,7 +184,7 @@ def migrate_models(device42, syscat, logger):
                               auth=(device42.user, device42.passwd)).json()['models']:
         if model['manufacturer'] and model['manufacturer'] != None:
             post(syscat.url,
-                 'brands/{}/Produces/models'.format(sanitise_uid(model['manufacturer'], logger)),
+                 'makes/{}/Produces/models'.format(sanitise_uid(model['manufacturer'], logger)),
                  {'uid': model['name']},
                  logger)
 
@@ -193,7 +194,7 @@ def migrate_operating_systems(device42, syscat, logger):
     for o_s in requests.get('{}/operatingsystems/'.format(device42.uri),
                             auth=(device42.user, device42.passwd)).json()['operatingsystems']:
         post(syscat.url,
-             'brands/{}/Produces/operatingSystems'.format(o_s['manufacturer']),
+             'makes/{}/Produces/operatingSystems'.format(o_s['manufacturer']),
              {'uid': o_s['name']},
              logger)
 
@@ -206,20 +207,17 @@ def migrate_buildings(device42, syscat, org, logger):
     logger.info('Copying sites into Syscat as both sites and buildings')
     for bldg in requests.get('{}/buildings/'.format(device42.uri),
                              auth=(device42.user, device42.passwd)).json()['buildings']:
+        post(syscat.url, 'organisations/{}/Sites/sites'.format(org), {'uid': bldg['name']}, logger)
+        post(syscat.url, 'buildings', {'uid': bldg['name']}, logger)
         post(syscat.url,
-             'organisations/{}/Sites/sites'.format(org),
-             {'uid': bldg['name']},
-             logger)
-        post(syscat.url,
-             'organisations/{}/Sites/sites/{}/Buildings/buildings'.format(
-                 org, sanitise_uid(bldg['name'], logger)),
-             {'uid': bldg['name']},
+             'organisations/{}/Sites/sites/{}/Buildings'.format(org, sanitise_uid(bldg['name'], logger)),
+             {'target': '/buildings/{}'.format(bldg['name'])},
              logger)
         put(syscat.url,
-            'organisations/{}/Sites/sites/{}/Buildings/buildings'.format(
+            '/organisations/{}/Sites/sites/{}/Buildings/buildings'.format(
                 org, sanitise_uid(bldg['name'], logger)),
             sanitise_uid(bldg['name'], logger),
-            {'comments': bldg['notes']},
+            {'description': bldg['notes']},
             logger)
 
 def migrate_rooms(device42, syscat, org, logger):
@@ -233,10 +231,10 @@ def migrate_rooms(device42, syscat, org, logger):
              {'uid': room['name']},
              logger)
         put(syscat.url,
-            'organisations/{org}/Sites/sites/{bldg}/Buildings/buildings/{bldg}/Rooms/rooms'.format(
+            '/organisations/{org}/Sites/sites/{bldg}/Buildings/buildings/{bldg}/Rooms/rooms'.format(
                 org=org, bldg=sanitise_uid(room['building'], logger)),
             sanitise_uid(room['name'], logger),
-            {'comments': room['notes']},
+            {'description': room['notes']},
             logger)
 
 def create_device(syscat, details, org, logger):
@@ -264,7 +262,7 @@ def create_device(syscat, details, org, logger):
         data['asset_number'] = ''
     # Now create it
     logger.debug('Updating device {} with details: {}'.format(details['name'], data))
-    put(syscat.url, 'devices', sanitise_uid(details['name'], logger), data, logger)
+    put(syscat.url, '/devices', sanitise_uid(details['name'], logger), data, logger)
     # Now link other things as we confirm we have them
     # Owner
     if details['customer'] and details['customer'] != None:
@@ -281,7 +279,7 @@ def create_device(syscat, details, org, logger):
             details['name'], details['manufacturer'], details['hw_model']))
         post(syscat.url,
              'devices/{}/Model'.format(sanitise_uid(details['name'], logger)),
-             {'target': '/brands/{}/Produces/models/{}'.format(
+             {'target': '/makes/{}/Produces/models/{}'.format(
                  sanitise_uid(details['manufacturer'], logger),
                  sanitise_uid(details['hw_model'], logger))},
              logger)
@@ -319,9 +317,55 @@ def create_device(syscat, details, org, logger):
 def migrate_devices(device42, syscat, org, logger):
     "Migrate device definitions into Syscat."
     logger.info('Copying devices into Syscat')
-    for device in requests.get('{}/devices/all/?include_cols=name,serial_no,asset_no,in_service,service_level,type,tags,customer,hw_model,manufacturer,room,building,location,os,blankasnull=true'.format(device42.uri),
+    # Build an ID->devicename lookup table
+    device_cache = {}
+    for device in requests.get('{}/devices/all/?include_cols=device_id,name,serial_no,asset_no,in_service,service_level,type,tags,customer,hw_model,manufacturer,room,building,location,os,blankasnull=true'.format(device42.uri),
                                auth=(device42.user, device42.passwd)).json()['Devices']:
+        # Update the lookup table
+        device_cache[device['device_id']] = device['name']
+        # Create the device in Syscat
         create_device(syscat, device, org, logger)
+    return device_cache
+
+def migrate_interfaces(device42, syscat, device_cache, logger):
+    "Migrate interfaces into Syscat"
+    logger.info('Copying switchports from Device42 to interfaces in Syscat')
+    interface_cache = {}
+    for switchport in requests.get('{}/switchports/'.format(device42.uri),
+                                   auth=(device42.user, device42.passwd)).json()['switchports']:
+        # Is it allocated to a device?
+        if 'switch' not in switchport:
+            logger.warning('Switchport {} has no "switch" data'.format(switchport['switchport_id']))
+            continue
+        # Is it usable?
+        if 'port' not in switchport or switchport['port'] == "":
+            logger.warning('Switchport {} has an empty "port" field'.format(switchport['switchport_id']))
+            continue
+        # Carry on
+        device_id = switchport['switch']['device_id']
+        interface_cache[switchport['switchport_id']] = switchport['port']
+        if device_id in device_cache:
+            device = device_cache[device_id]
+            path = '/devices/{}/Interfaces/networkInterfaces'.format(sanitise_uid(device, logger))
+            uid = switchport['port']
+            # Create the interface
+            logger.info('Attempting to create {}/{}'.format(path, uid))
+            post(syscat.url, path, {'uid': uid}, logger)
+            # Add its attributes
+            attrs = {}
+            if 'description' in switchport and switchport['description'] != "":
+                attrs['description'] = switchport['description']
+            if 'macs' in switchport and switchport['macs'] != "":
+                attrs['macaddress'] = switchport['macs']
+            if attrs != {}:
+                put(syscat.url, '{}'.format(path), sanitise_uid(uid, logger), attrs, logger)
+            # Add any tags
+            for tag in switchport['tags']:
+                post(syscat.url,
+                     '{}/{}'.format(path, sanitise_uid(uid, logger)),
+                     {'target': '/tags/{}'.format(tag)},
+                     logger)
+    return interface_cache
 
 def migrate_vms(device42, syscat, logger):
     """
@@ -362,6 +406,7 @@ def migrate_vrf_groups(device42, syscat, default_org, logger):
 def migrate_subnets(device42, syscat, customer_cache, default_org, logger):
     "Migrate subnet definitions into Syscat"
     logger.info('Copying subnets into Syscat')
+    subnet_vrf_cache = {}   # Lookup table of subnets to VRFs
     for subnet in requests.get('{}/subnets/'.format(device42.uri),
                                auth=(device42.user, device42.passwd)).json()['subnets']:
         logger.info('Processing subnet {}/{}'.format(
@@ -371,12 +416,19 @@ def migrate_subnets(device42, syscat, customer_cache, default_org, logger):
         addr_obj = ipaddress.ip_network('{}/{}'.format(
             subnet['network'],
             subnet['mask_bits']))
+        # Get its VRF
+        if 'vrf_group_name' in subnet and subnet['vrf_group_name']:
+            vrf = subnet['vrf_group_name']
+        else:
+            vrf = None
+        # Update the cache
+        subnet_vrf_cache[subnet['subnet_id']] = vrf
         # Insert the subnet itself.
         logger.debug('Attempting to add subnet {}'.format(addr_obj.with_prefixlen))
         payload = {'org': default_org,
                    'subnet': addr_obj.with_prefixlen}
-        if 'vrf_group_name' in subnet and subnet['vrf_group_name']:
-            payload['vrf'] = subnet['vrf_group_name']
+        if vrf:
+            payload['vrf'] = vrf
         response = post(syscat.url, 'subnets', payload, logger, api="ipam")
         # Tags
         for tag in subnet['tags']:
@@ -397,6 +449,25 @@ def migrate_subnets(device42, syscat, customer_cache, default_org, logger):
              '{}/AllocatedTo'.format(response.text),
              {'target': '/organisations/{}'.format(sanitise_uid(customer, logger))},
              logger)
+    return subnet_vrf_cache
+
+def migrate_addresses(device42, syscat, org, subnet_vrf_cache, logger):
+    "Migrate IPv4 and IPv6 addresses into Syscat"
+    logger.info('Migrating IP addresses')
+    for addr in requests.get('{}/ips/'.format(device42.uri),
+                             auth=(device42.user, device42.passwd)).json()['ips']:
+        logger.info('Processing address {}'.format(addr['ip']))
+        # Create an object to represent the address
+        addr_obj = ipaddress.ip_address(addr['ip'])
+        # Insert the address itself
+        payload = {'address': addr_obj.exploded,
+                   'org': org}
+        if addr['subnet_id'] in subnet_vrf_cache:
+            payload['vrf'] = subnet_vrf_cache[addr['subnet_id']]
+        post(syscat.url, 'addresses', payload, logger, api="ipam")
+        # Associating them with devices and interfaces would be a good thing,
+        # but will require more work to get right.
+        # Ditto with tags.
 
 def parse_cli_args():
     "Parse the CLI arguments."
@@ -438,14 +509,24 @@ def migrate_all_the_things():
     migrate_buildings(device42, syscat, args.default_org, logger)
     migrate_rooms(device42, syscat, args.default_org, logger)
     # Devices
-    migrate_brands(device42, syscat, logger)
+    migrate_makes(device42, syscat, logger)
     migrate_models(device42, syscat, logger)
     migrate_operating_systems(device42, syscat, logger)
-    migrate_devices(device42, syscat, args.default_org, logger)
+    device_cache = migrate_devices(device42, syscat, args.default_org, logger)
+    migrate_interfaces(device42, syscat, device_cache, logger)
     migrate_vms(device42, syscat, logger)
     # IPAM
     migrate_vrf_groups(device42, syscat, args.default_org, logger)
-    migrate_subnets(device42, syscat, customer_cache, args.default_org, logger)
+    subnet_vrf_cache = migrate_subnets(device42,
+                                       syscat,
+                                       customer_cache,
+                                       args.default_org,
+                                       logger)
+    migrate_addresses(device42,
+                      syscat,
+                      args.default_org,
+                      subnet_vrf_cache,
+                      logger)
 
 if __name__ == '__main__':
     migrate_all_the_things()
