@@ -1,2 +1,2 @@
-netdescribe
-requests
+netdescribe==0.2.4
+requests==2.22.0

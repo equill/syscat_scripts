@@ -10,6 +10,8 @@ stdenv.mkDerivation rec {
         pkgs.bash
     ];
 
+    shellHook = "export PS1='\n\\[\\033[01;32m\\][nix webcat] \\w\\$\\[\\033[00m\\] '";
+
     env = buildEnv {
         name = name;
         paths = buildInputs;
