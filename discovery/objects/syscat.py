@@ -95,7 +95,7 @@ class Syscat:
         """
         Set the attributes of a resource.
         """
-        requests.put('{}/{}'.format(self.get_raw_api(), uri),
+        requests.put('{}{}'.format(self.get_raw_api(), uri),
                      data=attributes)
 
 

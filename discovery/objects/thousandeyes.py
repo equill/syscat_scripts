@@ -99,7 +99,7 @@ class GenericAgent:
         server.ensure_exists(self.syscat_type, self.agentname)
         # Ensure its attributes match the ones we have,
         # remembering that Syscat doesn't have an agentid attribute for these.
-        server.update_attributes('{}/{}'.format(self.syscat_type, self.agentname),
+        server.update_attributes('/{}/{}'.format(self.syscat_type, self.agentname),
                                  self.__dict__)
 
 class CloudAgent(GenericAgent):
