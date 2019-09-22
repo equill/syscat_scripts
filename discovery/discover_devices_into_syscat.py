@@ -9,6 +9,8 @@
 Update Syscat with the results of discovering a device.
 """
 
+# pylint: disable=wrong-import-order
+
 # Third-party libraries
 import netdescribe.snmp.device_discovery
 from netdescribe.utils import create_logger
@@ -143,6 +145,7 @@ def add_ip_address(host_uid, iface_uid, addr, base_url, logger):
     Provide a consistent way to add an IP address to an interface.
     Return a boolean to indicate success or failure.
     """
+    # pylint: disable=line-too-long
     ipurl = '{url}/raw/v1/devices/{host}/Interfaces/networkInterfaces/{iface}/Addresses/ipv{version}Addresses'.format(
         url=base_url, host=host_uid, iface=iface_uid, version=addr.version)
     # Now do the work.
@@ -150,6 +153,7 @@ def add_ip_address(host_uid, iface_uid, addr, base_url, logger):
                  addr.version, addr.with_prefixlen, ipurl, addr.ip)
     addresponse = requests.post(
         ipurl, data={'uid': str(addr.ip),
+                     # pylint: disable=anomalous-backslash-in-string
                      'prefixlength': re.split('\/', addr.with_prefixlen)[1]})
     if addresponse.status_code != 201:
         logger.error('Failed to add address %s to interface: %s %s',
@@ -211,7 +215,7 @@ def compare_discovered_device_to_syscat(discovered, syscat, logger):
 
 def discovered_ifaces_to_syscat_format(interfaces, logger):
     '''
-    Take the 'interfaces' sub-tree of explore_device(), and return a dict of key = uid, value = 
+    Take the 'interfaces' sub-tree of explore_device(), and return a dict of key = uid, value =
     (SyscatIface namedtuple, address dict) tuple, that approximates what we'd get if we extracted
     the equivalent tree from Syscat.
     Makes it much simpler to compare both sets.
@@ -356,7 +360,7 @@ def get_iface_list_from_syscat(host_uid, syscat_url, logger):
         logger.debug('No interfaces found for %s', host_uid)
         return ifacedict
     # If something else went wrong, fail noisily.
-    elif response.status_code != 200:
+    if response.status_code != 200:
         logger.error('Failed to retrieve interface list from %s: %s %s',
                      host_uid, response.status_code, response.text)
         sys.exit(1)
@@ -627,7 +631,7 @@ def populate_interfaces_flat(host_uid, interfaces, syscat_url, logger, newdevice
                 # Interfaces that have gone away
                 if diffs['syscat-only']:
                     for iface in diffs['syscat-only']:
-                        logger.info('Removing interface %s:%s because it doesn´t exist on the device.',
+                        logger.info('Removing interface %s:%s because it doesn´t exist.',
                                     host_uid, iface)
                         delete_interface(host_uid, iface, syscat_url, logger)
                 return True

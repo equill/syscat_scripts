@@ -9,12 +9,14 @@
 Perform discovery on all devices in Syscat with a management address.
 """
 
+# pylint: disable=wrong-import-order
+
 # Third-party modules
 from netdescribe.utils import create_logger
 import requests
 
 # Local modules
-import discover_into_syscat
+import discover_devices_into_syscat
 
 # Included batteries
 import argparse
@@ -37,10 +39,10 @@ def discover_device(syscat_url, community, logger, device):
         addr = response.json()[0]['uid']
         logger.info('Discovering {host} at address {addr}'.format(host=device['uid'],
                                                                   addr=addr))
-        discover_into_syscat.discover_into_syscat(addr,
-                                                  device['uid'],
-                                                  snmpcommunity=community,
-                                                  logger_arg=logger)
+        discover_devices_into_syscat.discover_into_syscat(addr,
+                                                          device['uid'],
+                                                          snmpcommunity=community,
+                                                          logger_arg=logger)
     else:
         logger.debug('No admin address found for {}'.format(device['uid']))
 

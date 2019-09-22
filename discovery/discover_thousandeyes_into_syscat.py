@@ -9,6 +9,8 @@
 Perform discovery on ThousandEyes agents and tests, and import them into Syscat.
 """
 
+# pylint: disable=wrong-import-order
+
 # Third-party modules
 from netdescribe.utils import create_logger
 
