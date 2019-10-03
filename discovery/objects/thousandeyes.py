@@ -11,6 +11,9 @@ Objects and methods for interacting with ThousandEyes.
 Very primitive right now; no logging or real error-handling.
 """
 
+
+# pylint: disable=wrong-import-order
+
 # Third-party libraries
 import requests
 from objects.syscat import Syscat
@@ -115,6 +118,7 @@ class EnterpriseCluster(GenericAgent):
     """
     syscat_type = 'thousandeyesEnterpriseClusters'
 
+    # pylint: disable=too-many-arguments
     def __init__(self,
                  agentid,
                  agentname,
@@ -143,6 +147,7 @@ class EnterpriseAgent(EnterpriseCluster):
     """
     syscat_type = 'thousandeyesEnterpriseAgents'
 
+    # pylint: disable=too-many-arguments
     def __init__(self,
                  agentid,
                  agentname,
@@ -212,6 +217,7 @@ class EnterpriseClusterMember:
     """
     syscat_type = 'thousandeyesEnterpriseClusterMembers'
 
+    # pylint: disable=too-many-arguments
     def __init__(self, name, ipaddresses, publicipaddresses, prefix, network, agentstate):
         self.name = name
         self.ipaddresses = ipaddresses
@@ -235,6 +241,7 @@ class EnterpriseClusterMember:
 
 ## Tests
 
+# pylint: disable=too-many-instance-attributes
 class GenericTest:
     """
     A basic type of TE test, to be used where we either don't know for sure what type it is,
@@ -242,6 +249,7 @@ class GenericTest:
     """
     syscat_type = 'thousandeyesTests'
 
+    # pylint: disable=too-many-arguments
     def __init__(self,
                  testname,
                  testid,
