@@ -1,7 +1,7 @@
 version: "3"
 services:
     neo4j_exp:
-        image: neo4j:3.4.1
+        image: neo4j:3.5.3
         deploy:
             replicas: 1
         ports:
@@ -29,7 +29,7 @@ services:
             SYSCAT_NEO4J_USER: "neo4j"
             SYSCAT_NEO4J_PASSWORD: "wallaby"
     neo4j_disc:
-        image: neo4j:3.4.1
+        image: neo4j:3.5.3
         deploy:
             replicas: 1
         ports:
