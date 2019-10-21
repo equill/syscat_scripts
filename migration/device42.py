@@ -215,7 +215,8 @@ def migrate_buildings(device42, syscat, org, logger):
         post(syscat.url, 'organisations/{}/Sites/sites'.format(org), {'uid': bldg['name']}, logger)
         post(syscat.url, 'buildings', {'uid': bldg['name']}, logger)
         post(syscat.url,
-             'organisations/{}/Sites/sites/{}/Buildings'.format(org, sanitise_uid(bldg['name'], logger)),
+             'organisations/{}/Sites/sites/{}/Buildings'.format(org,
+                                                                sanitise_uid(bldg['name'], logger)),
              {'target': '/buildings/{}'.format(bldg['name'])},
              logger)
         put(syscat.url,
@@ -304,6 +305,7 @@ def create_device(syscat, details, org, logger):
     # Site
     if details['building'] != None and details['building'] != '':
         if details['room'] != None and details['room'] != '':
+            # pylint: disable=line-too-long
             target = '/organisations/{org}/Sites/sites/{bldg}/Buildings/buildings/{bldg}/Rooms/rooms/{room}'.format(
                 org=org,
                 bldg=sanitise_uid(details['building'], logger),
@@ -324,6 +326,7 @@ def migrate_devices(device42, syscat, org, logger):
     logger.info('Copying devices into Syscat')
     # Build an ID->devicename lookup table
     device_cache = {}
+    # pylint: disable=line-too-long
     for device in requests.get('{}/devices/all/?include_cols=device_id,name,serial_no,asset_no,in_service,service_level,type,tags,customer,hw_model,manufacturer,room,building,location,os,blankasnull=true'.format(device42.uri),
                                auth=(device42.user, device42.passwd)).json()['Devices']:
         # Update the lookup table
@@ -344,7 +347,8 @@ def migrate_interfaces(device42, syscat, device_cache, logger):
             continue
         # Is it usable?
         if 'port' not in switchport or switchport['port'] == "":
-            logger.warning('Switchport {} has an empty "port" field'.format(switchport['switchport_id']))
+            logger.warning('Switchport {} has an empty "port" field'.format(
+                switchport['switchport_id']))
             continue
         # Carry on
         device_id = switchport['switch']['device_id']
