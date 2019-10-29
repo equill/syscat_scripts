@@ -482,8 +482,7 @@ def parse_cli_args():
     "Parse the CLI arguments."
     parser = argparse.ArgumentParser()
     parser.add_argument('--d42_user', action='store', default='admin', required=True)
-    parser.add_argument('--d42_url', action='store', default='http://localhost',
-                        help='E.g: http://localhost', required=True)
+    parser.add_argument('--d42_url', action='store', required=True, help='E.g: http://localhost')
     parser.add_argument('--syscat_url', action='store', default='http://10.255.0.1')
     parser.add_argument('--default_asn', action='store', default='64512')
     parser.add_argument('--default_org', action='store', default='myCompany')
