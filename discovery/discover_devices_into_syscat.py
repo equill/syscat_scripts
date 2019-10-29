@@ -691,7 +691,7 @@ def discover_into_syscat(address,        # IP address, FQDN or otherwise resolva
     # Is it already there?
     existing_response = requests.get("%s/raw/v1/devices/%s" % (syscat_url, uid))
     # No existing entry; create one
-    if existing_response.status_code == 404:
+    if existing_response.json() == []:
         logger.debug("%s is not present in Syscat; creating it.", uid)
         # Create the device entry itself
         add_device(uid,
@@ -701,7 +701,7 @@ def discover_into_syscat(address,        # IP address, FQDN or otherwise resolva
                    logger)
         created_new_device = True
     # We already have one of these; log the fact and ensure it's up to date
-    elif existing_response.status_code == 200:
+    elif existing_response.json() != []:
         logger.debug("%s is already present in Syscat. Ensuring it's up to date...", uid)
         created_new_device = False
         # Compare the system attributes
@@ -775,6 +775,7 @@ def process_cli():
                          name=args.name,
                          use_sysname=args.use_sysname,
                          snmpcommunity=args.community,
+                         syscat_url=args.syscat_url,
                          loglevel=loglevel)
 
 if __name__ == "__main__":
