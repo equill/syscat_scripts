@@ -370,8 +370,8 @@ def get_iface_list_from_syscat(host_uid, syscat_url, logger):
     for iface in response.json():
         # Assemble the namedtuple and append it to the accumulator
         ifacedict[iface['uid']] = (
-            SyscatIface(snmpindex=iface['snmpindex'],
-                        ifname=iface['ifname'],
+            SyscatIface(snmpindex=dictdefault('snmpindex', iface, default=""),
+                        ifname=dictdefault('ifname', iface, default=""),
                         ifdescr=dictdefault('ifdescr', iface, default=""),
                         ifalias=dictdefault('ifalias', iface, default=""),
                         iftype=dictdefault('iftype', iface, default=""),
