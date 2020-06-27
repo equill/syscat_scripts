@@ -1,7 +1,7 @@
 version: "3"
 services:
     neo4j_exp:
-        image: neo4j:3.5.3
+        image: neo4j:4.1.0
         deploy:
             replicas: 1
         ports:
@@ -14,7 +14,7 @@ services:
         volumes:
             - exp_data:/data
     syscat_exp:
-        image: equill/syscat_expected:0.1.7
+        image: equill/syscat_expected:0.1.9a3
         deploy:
             replicas: 1
         ports:
@@ -28,8 +28,10 @@ services:
             SYSCAT_NEO4J_PORT: 7474
             SYSCAT_NEO4J_USER: "neo4j"
             SYSCAT_NEO4J_PASSWORD: "wallaby"
+            FILES_LOCATION: "/tmp/"
+            FILES_TEMP_LOCATION: "/tmp/"
     neo4j_disc:
-        image: neo4j:3.5.3
+        image: neo4j:4.1.0
         deploy:
             replicas: 1
         ports:
@@ -42,7 +44,7 @@ services:
         volumes:
             - disc_data:/data
     syscat_disc:
-        image: equill/syscat_discovered:0.1.7
+        image: equill/syscat_discovered:0.1.9a3
         deploy:
             replicas: 1
         ports:
@@ -56,6 +58,8 @@ services:
             NEO4J_PORT: 7474
             NEO4J_USER: "neo4j"
             NEO4J_PASSWORD: "wallaby"
+            FILES_LOCATION: "/tmp/"
+            FILES_TEMP_LOCATION: "/tmp/"
 networks:
     syscat_exp:
     syscat_disc:
