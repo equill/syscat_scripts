@@ -1,0 +1,37 @@
+version: "3"
+services:
+    neo4j:
+        image: neo4j:4.1.0
+        deploy:
+            replicas: 1
+        ports:
+            - "7678:7474"
+            - "7691:7687"
+        networks:
+            - syscat
+        environment:
+            NEO4J_AUTH: "neo4j/wallaby"
+        volumes:
+            - syscat_data:/data
+    syscat:
+        image: equill/syscat:0.2.0a2
+        deploy:
+            replicas: 1
+        ports:
+            - "4952:4949"
+        networks:
+            - syscat
+        environment:
+            SYSCAT_LISTEN_ADDR: "0.0.0.0"
+            SYSCAT_LISTEN_PORT: 4949
+            SYSCAT_NEO4J_HOSTNAME: "neo4j"
+            SYSCAT_NEO4J_PORT: 7474
+            SYSCAT_NEO4J_USER: "neo4j"
+            SYSCAT_NEO4J_PASSWORD: "wallaby"
+            FILES_LOCATION: "/tmp/"
+            FILES_TEMP_LOCATION: "/tmp/"
+networks:
+    syscat:
+volumes:
+    syscat_data:
+        external: true
