@@ -14,7 +14,7 @@ services:
         volumes:
             - syscat_data:/data
     syscat:
-        image: equill/syscat:0.2.0a2
+        image: equill/syscat:0.2.0
         deploy:
             replicas: 1
         ports:
@@ -30,6 +30,7 @@ services:
             SYSCAT_NEO4J_PASSWORD: "wallaby"
             FILES_LOCATION: "/tmp/"
             FILES_TEMP_LOCATION: "/tmp/"
+            SCHEMAPATH: "/schemas/"
 networks:
     syscat:
 volumes:
